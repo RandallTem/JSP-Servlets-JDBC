@@ -1,4 +1,4 @@
-package ru.tacos;
+package ru.tacos.models;
 
 public class Taco {
     long id;

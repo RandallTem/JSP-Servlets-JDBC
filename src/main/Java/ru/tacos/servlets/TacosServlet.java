@@ -1,5 +1,9 @@
-package ru.tacos;
+package ru.tacos.servlets;
 
+
+import ru.tacos.models.Client;
+import ru.tacos.models.Taco;
+import ru.tacos.services.TacosService;
 
 import javax.annotation.Resource;
 import javax.servlet.RequestDispatcher;
@@ -15,7 +19,7 @@ import java.util.List;
 @WebServlet("/Tacos")
 public class TacosServlet extends HttpServlet {
 
-    TacosModel tacosModel;
+    TacosService tacosModel;
 
     @Resource(name="jdbc/tacos")
     private DataSource dataSource;
@@ -24,7 +28,7 @@ public class TacosServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         try {
-            tacosModel = new TacosModel(dataSource);
+            tacosModel = new TacosService(dataSource);
         } catch (Exception e) {
             throw new ServletException(e);
         }

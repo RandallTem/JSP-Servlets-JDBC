@@ -1,4 +1,6 @@
-package ru.tacos;
+package ru.tacos.services;
+
+import ru.tacos.models.Client;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -6,11 +8,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
-public class TacosModel {
+public class TacosService {
 
     private DataSource dataSource;
 
-    public TacosModel(DataSource theDataSource) {
+    public TacosService(DataSource theDataSource) {
         dataSource = theDataSource;
     }
 
