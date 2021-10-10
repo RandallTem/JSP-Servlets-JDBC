@@ -19,28 +19,39 @@ import java.util.List;
 @WebServlet("/Tacos")
 public class TacosServlet extends HttpServlet {
 
-    TacosService tacosModel;
+    //Объект TacosService для взаимодействия с базой данных
+    TacosService tacosService;
 
+    //Источник данных
     @Resource(name="jdbc/tacos")
     private DataSource dataSource;
 
+    /*
+    В методе инициализируется объект класса TacosService
+     */
     @Override
     public void init() throws ServletException {
         super.init();
         try {
-            tacosModel = new TacosService(dataSource);
+            tacosService = new TacosService(dataSource);
         } catch (Exception e) {
             throw new ServletException(e);
         }
     }
 
+    /*
+    Метод проверяет авторизован ли посетитель сайта. Сначала он проверяет его Cookie на наличие токена авторизации,
+    если не находит, то ищет токен в объекте сессии. Если токен найден, то он передается методу getAccount()
+    объекта класса TacosService, который проверяет наличие записи с таким токеном в таблице пользователей. Если вернулся
+    null, значит токен в базе данных не найден и пользователь не авторизован.
+     */
     private Client checkAuthorization(HttpServletRequest request) throws Exception {
         Client client = null;
         Cookie[] theCookies = request.getCookies();
         if (theCookies != null) {
             for (Cookie tempCookie : theCookies) {
                 if ("tacos.token".equals(tempCookie.getName())) {
-                    client = tacosModel.getAccount(tempCookie.getValue());
+                    client = tacosService.getAccount(tempCookie.getValue());
                     if (client != null)
                         return client;
                 }
@@ -48,10 +59,14 @@ public class TacosServlet extends HttpServlet {
         }
         HttpSession session = request.getSession();
         if (session.getAttribute("tacos.token") != null)
-            client = tacosModel.getAccount(session.getAttribute("tacos.token").toString());
+            client = tacosService.getAccount(session.getAttribute("tacos.token").toString());
         return client;
     }
 
+    /*
+    Метод обрабатывает все полученные GET запросы. В зависимости от команды в запросе метод вызывает
+    другие методы для выполнения требуемой задачи.
+     */
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServerException{
         try {
             String command = request.getParameter("cmd");
@@ -101,12 +116,21 @@ public class TacosServlet extends HttpServlet {
         }
     }
 
+    /*
+    Метод выполняется после того, как была проведена оплата заказа. Он удаляет из объекта сессии информацию о
+    содержимом корзины и выполняет редирект на страницу с сообщением, что оплата успешно прошла.
+     */
     private void loadPaidPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         HttpSession session = request.getSession();
         session.setAttribute("orderList", null);
         response.sendRedirect("paid.html");
     }
 
+    /*
+    Метод отвечает за загрузку страницы оплаты. Из объекта запроса он получает цену заказа "price". Если попытка
+    зайти на страницу происходит не со страницы заказа, а через строку браузера, то в сессии нет значения "price".
+    В таком случае страница оплаты не загружается, а выполняется редирект на главную страницу.
+     */
     private void loadPaymentPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         HttpSession session = request.getSession();
         long price = session.getAttribute("price") == null ? -1 : (long)session.getAttribute("price");
@@ -119,6 +143,14 @@ public class TacosServlet extends HttpServlet {
         }
     }
 
+    /*
+    Метод удаляет выбранную позицию из заказа. Все позиции заказа хранятся в сессии в списке orderList. У каждой
+    позиции есть индивидуальное значение id - время заказа в миллисекундах. Когда на веб-странице корзины выбирается
+    удаление позиции, ее id передается в объекте запроса. В методе список заказов берется из объекта сессии,
+    последовательно перебирается, пока не будет найден заказ с нужным id. Заказ удаляется из списка и список помещается
+    обратно в сессию. Выполняется редирект обратно в корзину, где подгружается уже новый список, без удаленной
+    позиции.
+     */
     private void deleteOrder(HttpServletRequest request, HttpServletResponse response) throws Exception {
         HttpSession session = request.getSession();
         List<Taco> orderList = (List<Taco>)session.getAttribute("orderList");
@@ -136,6 +168,13 @@ public class TacosServlet extends HttpServlet {
         response.sendRedirect("Tacos?cmd=orderpage");
     }
 
+    /*
+    Метод отвечает за загрузку страницы корзины. Сначала он проверяет, авторизован ли посетитель.
+    Если авторизован, то из объекта сессии в объект запроса помещается список заказов и выполняется перенаправление
+    в корзину. Если посетитель не авторизован, то он перенаправляется на страницу авторизации. При этом в объект
+    запроса помещается значение showmessage, благодаря которому на странице авторизации отображается сообщение, что
+    пользователю надо авторизоваться для доступа к странице.
+     */
     private void loadOrderPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Client client = checkAuthorization(request);
         RequestDispatcher dispatcher;
@@ -155,12 +194,27 @@ public class TacosServlet extends HttpServlet {
         }
     }
 
+    /*
+    Метод отвечает за удаление аккаунта из базы данных. Сначала проверяется авторизован ли клиент. Если авторизован,
+    то его token передается методу deleteClass() объекта класса TacosService, который уже убирает запись об аккаунте
+    из базы данных. Затем выполняется редирект на главную страницу сайта, где пользователь оказывается неавторизованным,
+    потому что, хоть у него все еще есть cookie и запись в сессии, имеющийся у него токен больше не может быть найден в
+    базе данных.
+     */
     private void deleteAccount(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Client client = checkAuthorization(request);
-        tacosModel.deleteClient(client.getToken());
+        tacosService.deleteClient(client.getToken());
         response.sendRedirect("Tacos");
     }
 
+    /*
+    Метод отвечает за загрузку страницы управления аккаунтом. Проверяется авторизация посетителя. Если авторизован,
+    то из полученного при проверке авторизации объекта client в request записываются имя и почта клиента. Они потребуются
+    для генерации содержимого страницы. Если не авторизован, то выполняется перенаправление на страницу авторизации
+    с сообщением о том, что без авторизации желаемую страницу посетить нельзя. При этом информация о том, что
+    пользователь хотел посетить страницу управления аккаунтом, сохраняется в сессии, чтобы после успешной авторизации
+    сделать перенаправление именно на нее.
+     */
     private void loadAccountPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Client client = checkAuthorization(request);
         RequestDispatcher dispatcher;
@@ -178,6 +232,11 @@ public class TacosServlet extends HttpServlet {
         }
     }
 
+    /*
+    Метод отвечает за загрузку страницы регистрации. Выполняется проверка авторизации пользователя. Если он
+    уже авторизован, то выполняется перенаправление на главную страницу. Иначе, загружается страница с формой
+    для регистрации.
+     */
     private void loadRegistrationPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Cookie[] theCookies = request.getCookies();
         RequestDispatcher dispatcher;
@@ -190,6 +249,10 @@ public class TacosServlet extends HttpServlet {
         dispatcher.forward(request, response);
     }
 
+    /*
+    Метод выполняет выход пользователя из аккаунта. Он удаляет Cookie и запись из объекта сессии с информацией, требуемой
+    для авторизации. После чего, перенаправляет пользователя на главную страницу сайта.
+     */
     private void unauthorizeClient(HttpServletRequest request, HttpServletResponse response) throws Exception {
         Cookie newCookie = new Cookie("tacos.token", "");
         newCookie.setMaxAge(0);
@@ -199,6 +262,10 @@ public class TacosServlet extends HttpServlet {
         response.sendRedirect("Tacos");
     }
 
+    /*
+    Метод отвечает за загрузку страницы авторизации. Если пользователь уже авторизован, он перенаправляется на
+    главную страницу. Если не авторизован, открывается страница с формой авторизации.
+     */
     private void loadAuthorizationPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         RequestDispatcher dispatcher;
         Client client = checkAuthorization(request);
@@ -211,6 +278,13 @@ public class TacosServlet extends HttpServlet {
         dispatcher.forward(request, response);
     }
 
+    /*
+    Метод отвечает за загрузку страницы Меню. Если пользователь не авторизован, то он перенаправляется на страницу
+    авторизации с сообщением, что необходимо авторизация. Запись о том, что пользователь хотел перейти на страницу
+    меню, сохраняется в объекте запроса, чтобы после успешной авторизации он мог быть перенаправлен сразу на нее.
+    Иначе, выполняется переход на страницу меню. При этом в объект запроса также передается имя аккаунта,
+    для того, чтобы отобразить приветствие.
+     */
     private void loadMenuPage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         RequestDispatcher dispatcher;
         Client client = checkAuthorization(request);
@@ -228,7 +302,11 @@ public class TacosServlet extends HttpServlet {
 
     }
 
-
+    /*
+    Метод отвечает за загрузку главной страницы. Если пользователь не авторизован, то атрибут IS_AUTH устанавливается
+    в false и страницы отображает кнопку ВОЙТИ. Если авторизован, то IS_AUTH равен true, а также передается имя
+    пользователя для отображения приветствия авторизованного пользователя.
+     */
     private void loadHomePage(HttpServletRequest request, HttpServletResponse response) throws Exception {
         RequestDispatcher dispatcher = request.getRequestDispatcher("/home.jsp");
         Client client = checkAuthorization(request);
@@ -241,6 +319,10 @@ public class TacosServlet extends HttpServlet {
         dispatcher.forward(request, response);
     }
 
+    /*
+    Метод обрабатывает все полученные POST запросы. В зависимости от команды в запросе метод вызывает
+    другие методы для выполнения требуемой задачи.
+    */
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         try {
@@ -251,7 +333,7 @@ public class TacosServlet extends HttpServlet {
                     authorizeClient(request, response);
                     break;
                 case "register":
-                    if (tacosModel.isNameEmailExist(request.getParameter("nickname"), request.getParameter("email"))) {
+                    if (tacosService.isNameEmailExist(request.getParameter("nickname"), request.getParameter("email"))) {
                         registerClient(request, response);
                     } else {
                         dispatcher = request.getRequestDispatcher("/reg.jsp");
@@ -267,11 +349,15 @@ public class TacosServlet extends HttpServlet {
                     break;
             }
         } catch (Exception e) {
-        //    System.out.println(e);
             throw new ServerException(e.toString());
         }
     }
 
+    /*
+    Метод отвечает за добавление позиции в заказ. Он формирует позицию в виде объекта Taco с помощью полученных
+    из формы значений, извлекает из объекта сессии список заказов orderList<Taco>, добавляет в него новый элемент и
+    помещает список обратно в объект сессии.
+     */
     private void addToOrder(HttpServletRequest request, HttpServletResponse response) throws Exception {
         String tortillaStr = request.getParameter("tortilla");
         boolean tortilla = tortillaStr.equals("wheat") ? false : true;
@@ -310,6 +396,13 @@ public class TacosServlet extends HttpServlet {
         response.sendRedirect("Tacos?cmd=menu&status=ok");
     }
 
+    /*
+    Метод выполняет обновление данных аккаунта. С помощью метода объекта класса TacosService выполняется проверка
+    введенных в форму имени и почты на наличие в базе данных, а также правильно введенного старого пароля.
+    Если есть проблемы, то выполняется редирект на ту же самую страницу, но выводится сообщение о проблеме.
+    Если все в порядке, то данные из формы передаются в метод объекта класса TacosService для обновления базы данных, а
+    пользователь выбрасывается из аккаунта, чтобы заново авторизоваться и получить новый токен.
+     */
     private void updateProfile(HttpServletRequest request, HttpServletResponse response) throws Exception {
         String curName = request.getParameter("curNickname");
         String curEmail = request.getParameter("curEmail");
@@ -321,11 +414,11 @@ public class TacosServlet extends HttpServlet {
         boolean test2 = newName.equals(curEmail);
         String testNewName = newName.equals(curName) ? "" : newName;
         String testNewEmail = newEmail.equals(curEmail) ? "" : newEmail;
-        if (!tacosModel.isNameEmailExist(testNewName, testNewEmail)) {
+        if (!tacosService.isNameEmailExist(testNewName, testNewEmail)) {
             response.sendRedirect("Tacos?cmd=account&mf1=true");
         } else {
-            if (tacosModel.checkPassword(oldPassword, (curName + curEmail + oldPassword).hashCode())) {
-                tacosModel.updateClient(curName, newName, newEmail, newPassword);
+            if (tacosService.checkPassword(oldPassword, (curName + curEmail + oldPassword).hashCode())) {
+                tacosService.updateClient(curName, newName, newEmail, newPassword);
                 response.sendRedirect("Tacos?cmd=unauth");
             } else {
                 response.sendRedirect("Tacos?cmd=account&mf2=true");
@@ -333,20 +426,29 @@ public class TacosServlet extends HttpServlet {
         }
     }
 
-
+    /*
+    Метод выполняет регистрацию клиента. Полученные из формы данные передаются в метод объекта класса TacosService,
+    который добавляет новую запись в базу данных.
+     */
     private void registerClient(HttpServletRequest request, HttpServletResponse response) throws Exception {
         String name, email, password;
         name = request.getParameter("nickname");
         email = request.getParameter("email");
         password = request.getParameter("password");
-        String token = tacosModel.register(name, email, password);
+        String token = tacosService.register(name, email, password);
         HttpSession session = request.getSession();
         session.setAttribute("tacos.token", token);
         response.sendRedirect("Tacos");
     }
 
+    /*
+    Метод выполняет авторизацию клиента. Почта и пароль передаются в метод объекта класса TacosService, если они верны,
+    то возвращается токен аккаунта. Если отмечен чекбокс "запомнить меня", то токен сохраняется в Cookie, который
+    действует 72 часа. Если чекбокс не отмечен, то токен сохранится в объекте сессии и будет храниться
+    только до ее завершения.
+     */
     private void authorizeClient(HttpServletRequest request, HttpServletResponse response) throws Exception {
-        String token = tacosModel.authorize(request.getParameter("email"), request.getParameter("password"));
+        String token = tacosService.authorize(request.getParameter("email"), request.getParameter("password"));
         RequestDispatcher dispatcher;
         if (token == "failed") {
             dispatcher = request.getRequestDispatcher("/auth.jsp");
